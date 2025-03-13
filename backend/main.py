@@ -5,17 +5,18 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 # Import from langchain_openai instead of langchain.llms
-from langchain_openai import OpenAI
+from langchain_openai import ChatOpenAI
 
 # Use PromptTemplate from langchain.prompts
 from langchain.prompts import PromptTemplate
 
 # Use RunnableSequence instead of LLMChain
 from langchain.schema.runnable import RunnableSequence
+from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
+print(OPENAI_API_KEY)
 if not OPENAI_API_KEY:
     raise ValueError("Please provide OPENAI_API_KEY in your .env file.")
 
@@ -33,19 +34,19 @@ app.add_middleware(
 class UserQuery(BaseModel):
     question: str
 
-# Define a PromptTemplate
-template = PromptTemplate(
-    input_variables=["user_question"],
-    template="You are a helpful AI assistant. The user asks: {user_question}"
+template = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful AI assistant."),
+    ("human", "{user_question}")
+])
+
+
+llm = ChatOpenAI(
+    temperature=0,
+    openai_api_key=OPENAI_API_KEY,
+    model="gpt-4o-mini"
 )
 
-# Initialize OpenAI from langchain_openai
-llm = OpenAI(
-    temperature=0.5,
-    openai_api_key=OPENAI_API_KEY
-)
-
-chain = RunnableSequence(template | llm)
+chain = template | llm
 
 @app.get("/")
 def read_root():
