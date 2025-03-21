@@ -187,3 +187,106 @@ def login(user_data: UserLogin, db=Depends(get_db)):
         "expires_at": expiration.isoformat(),
         "is_admin": user.is_admin
     }
+
+@app.post("/chat")
+def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depends(get_db)):
+    """
+    Multi-turn chat endpoint with knowledge base integration
+    """
+    try:
+        user_id = current_user.id
+        user_input = request.question.strip()
+        
+        if not user_input:
+            raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+        # Find or create conversation
+        active_conversation = db.query(Conversation).filter(
+            Conversation.user_id == user_id,
+            Conversation.end_time.is_(None)
+        ).order_by(desc(Conversation.start_time)).first()
+        
+        if not active_conversation:
+            # Create a new conversation
+            active_conversation = Conversation(user_id=user_id)
+            db.add(active_conversation)
+            db.commit()
+            db.refresh(active_conversation)
+        
+        # Retrieve conversation history
+        history_messages = db.query(Message).filter(
+            Message.conversation_id == active_conversation.id
+        ).order_by(Message.timestamp).all()
+        
+        # Format conversation history
+        history_formatted = "\n".join([
+            f"{'User' if msg.role == 'user' else 'AI'}: {msg.content}"
+            for msg in history_messages[-10:]  # Keep last 10 messages for context
+        ])
+        
+        # Query knowledge base for relevant information
+        try:
+            knowledge_results = kb.search(user_input, top_k=3)
+        except Exception as e:
+            print(f"Knowledge base search error: {str(e)}")
+            knowledge_results = []
+            
+        # Format knowledge base results
+        knowledge_base_text = "\n\n".join([
+            f"Document: {result['metadata'].get('file_name', 'Unknown')}\n"
+            f"Content: {result['content']}\n"
+            f"Relevance: {result['score']:.2f}"
+            for result in knowledge_results
+        ]) if knowledge_results else "No relevant information found in knowledge base."
+        
+        # Invoke LLM pipeline
+        response_text = pipeline.invoke({
+            "history": history_formatted,
+            "user_input": user_input,
+            "knowledge_base": knowledge_base_text
+        })
+        
+        # Compute confidence score based on knowledge base results
+        if knowledge_results:
+            # Average the top 3 scores, weighted by position
+            weights = [0.6, 0.3, 0.1]
+            weighted_scores = [result["score"] * weight for result, weight in zip(knowledge_results, weights)]
+            confidence_score = min(100, sum(weighted_scores) / sum(weights[:len(knowledge_results)]) * 100)
+        else:
+            # Lower confidence when no knowledge base results are found
+            confidence_score = 70
+        
+        # Determine if escalation is needed
+        escalate = confidence_score < 70
+        
+        # Save user message
+        user_message = Message(
+            conversation_id=active_conversation.id,
+            role="user",
+            content=user_input
+        )
+        db.add(user_message)
+        
+        # Save AI response
+        ai_message = Message(
+            conversation_id=active_conversation.id,
+            role="assistant",
+            content=response_text,
+            confidence_score=confidence_score,
+            was_escalated=escalate,
+            used_kb=len(knowledge_results) > 0
+        )
+        db.add(ai_message)
+        
+        db.commit()
+        
+        return {
+            "answer": response_text,
+            "confidence": confidence_score,
+            "escalate": escalate,
+            "conversation_id": active_conversation.id
+        }
+    except Exception as e:
+        db.rollback()  # Rollback any pending transaction on error
+        print(f"Chat endpoint error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
