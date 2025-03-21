@@ -2,6 +2,7 @@ annotated-types==0.7.0
 anyio==4.8.0
 asyncpg==0.30.0
 black==25.1.0
+bcrypt==4.1.2
 certifi==2025.1.31
 charset-normalizer==3.4.1
 click==8.1.8
@@ -24,6 +25,7 @@ jsonpatch==1.33
 jsonpointer==3.0.0
 langchain==0.3.20
 langchain-core==0.3.44
+langchain-openai==0.1.4
 langchain-text-splitters==0.3.6
 langsmith==0.3.13
 markdown-it-py==3.0.0
@@ -43,6 +45,7 @@ pydantic==2.10.6
 pydantic_core==2.27.2
 pyflakes==3.2.0
 Pygments==2.19.1
+PyJWT==2.8.0
 pytest==8.3.5
 python-dotenv==1.0.1
 python-multipart==0.0.20
