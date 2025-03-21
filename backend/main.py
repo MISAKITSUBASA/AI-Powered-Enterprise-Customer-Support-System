@@ -1,6 +1,6 @@
 import os
-# Replace the jwt import with explicit import from PyJWT
-import jwt as pyjwt
+# Update JWT import statement
+import jwt
 import bcrypt
 from typing import Optional, Dict, List
 from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form, Query
@@ -25,15 +25,18 @@ from models import Base, User, Conversation, Message, Document
 
 # Import knowledge base
 from knowledge_base import KnowledgeBase
+from env_utils import get_openai_api_key, print_masked_key
 
 # ----- Load env vars -----
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = get_openai_api_key()
 JWT_SECRET = os.getenv("JWT_SECRET", "changeme")  # for demo only
 JWT_EXPIRATION = int(os.getenv("JWT_EXPIRATION", "86400"))  # 24 hours
 
 if not OPENAI_API_KEY:
     raise ValueError("Please set OPENAI_API_KEY in your .env file.")
+else:
+    print_masked_key(OPENAI_API_KEY, "Using OpenAI API Key")
 
 # ----- FastAPI init -----
 app = FastAPI(title="AI Customer Support API")
@@ -75,9 +78,9 @@ def get_db():
 
 def decode_token(token: str) -> Dict:
     try:
-        payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return payload
-    except pyjwt.PyJWTError:
+    except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
@@ -214,7 +217,7 @@ def login(user_data: UserLogin, db=Depends(get_db)):
         "exp": expiration,
         "is_admin": user.is_admin
     }
-    token = pyjwt.encode(payload, JWT_SECRET, algorithm="HS256")
+    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
     
     return {
         "access_token": token, 

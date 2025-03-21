@@ -12,10 +12,10 @@ from langchain.document_loaders import (
     UnstructuredExcelLoader
 )
 from dotenv import load_dotenv
-
+from env_utils import get_openai_api_key
 # Load environment variables
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = get_openai_api_key()
 
 # Define default paths for persistence
 DEFAULT_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge_index.index")
