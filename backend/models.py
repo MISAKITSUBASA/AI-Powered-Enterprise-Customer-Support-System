@@ -69,3 +69,5 @@ class Document(Base):
 
     # Relationships
     uploader = relationship("User", back_populates="documents")
+
+
