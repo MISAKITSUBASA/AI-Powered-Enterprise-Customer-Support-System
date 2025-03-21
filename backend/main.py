@@ -24,6 +24,9 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from models import Base, User, Conversation, Message, Document
 
+# Import knowledge base
+from knowledge_base import KnowledgeBase
+
 # ----- Load env vars -----
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -84,6 +87,15 @@ llm = OpenAI(
 )
 pipeline = prompt_template | llm
 
+# Define path for FAISS index persistence
+KNOWLEDGE_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge_index.index")
+
+# ----- OAuth2 & JWT -----
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# ----- Initialize Knowledge Base -----
+kb = KnowledgeBase(index_path=KNOWLEDGE_INDEX_PATH)
+
 # ----- Models / Schemas -----
 class UserCreate(BaseModel):
     username: str
@@ -121,6 +133,32 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def decode_token(token: str) -> Dict:
+    try:
+        payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except pyjwt.PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+
+def get_current_user(token: str = Depends(oauth2_scheme), db=Depends(get_db)) -> User:
+    payload = decode_token(token)
+    username = payload.get("sub")
+    if not username:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+def admin_required(current_user: User = Depends(get_current_user)) -> User:
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    return current_user
+
 
 # ----- Routes -----
 @app.get("/")
@@ -290,3 +328,78 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
         db.rollback()  # Rollback any pending transaction on error
         print(f"Chat endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# ----- Knowledge Base Endpoints -----
+@app.post("/knowledge/upload")
+async def upload_document(
+    file: UploadFile = File(...), 
+    current_user: User = Depends(admin_required),
+    db = Depends(get_db)
+):
+    """
+    Upload a document to the knowledge base (admin only)
+    """
+    # Check file size (max 50MB)
+    file_size = 0
+    file_content = await file.read()
+    file_size = len(file_content)
+    
+    if file_size > 50 * 1024 * 1024:  # 50MB
+        raise HTTPException(status_code=400, detail="File too large (max 50MB)")
+    
+    # Get file extension
+    file_name = file.filename
+    file_extension = file_name.split(".")[-1].lower() if "." in file_name else ""
+    
+    # Check supported file types
+    supported_types = ["pdf", "txt", "docx", "doc", "xlsx", "xls"]
+    if file_extension not in supported_types:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file type. Supported types: {', '.join(supported_types)}"
+        )
+    
+    # Add to knowledge base
+    success = kb.add_document(
+        file_content=file_content,
+        file_name=file_name,
+        file_type=file_extension,
+        metadata={"uploader": current_user.username}
+    )
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to process document")
+    
+    # Record document in database
+    new_doc = Document(
+        file_name=file_name,
+        file_type=file_extension,
+        file_size=file_size,
+        uploader_id=current_user.id
+    )
+    db.add(new_doc)
+    db.commit()
+    
+    return {"message": f"Document {file_name} uploaded successfully"}
+
+@app.get("/knowledge/search")
+def search_knowledge_base(
+    query: str = Query(..., min_length=3),
+    top_k: int = Query(5, ge=1, le=20),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Search the knowledge base
+    """
+    results = kb.search(query, top_k=top_k)
+    
+    # Format results for API response
+    formatted_results = []
+    for result in results:
+        formatted_results.append({
+            "content": result["content"],
+            "file_name": result["metadata"].get("file_name", "Unknown"),
+            "relevance_score": result["score"]
+        })
+    
+    return {"results": formatted_results}
