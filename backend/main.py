@@ -1,18 +1,33 @@
 import os
-from fastapi import FastAPI, HTTPException
+# Replace the jwt import with explicit import from PyJWT
+import jwt as pyjwt
+import bcrypt
+from typing import Optional, Dict, List
+from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
+import json
 
-# Import from langchain_openai instead of langchain.llms
-from langchain_openai import ChatOpenAI
+from sqlalchemy import create_engine, Column, Integer, String, func, desc
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Use PromptTemplate from langchain.prompts
+# LangChain imports
+from langchain_openai import OpenAI
 from langchain.prompts import PromptTemplate
-
-# Use RunnableSequence instead of LLMChain
 from langchain.schema.runnable import RunnableSequence
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.memory import ConversationBufferWindowMemory
+
+# Alternative import approach
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from models import Base, User, Conversation, Message, Document
+
+# Import knowledge base
+from knowledge_base import KnowledgeBase
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
