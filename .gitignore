@@ -172,3 +172,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+backend/main.py
+backend/customer_support.db
+backend/knowledge_index.index
+backend/knowledge_index.index_documents.npy

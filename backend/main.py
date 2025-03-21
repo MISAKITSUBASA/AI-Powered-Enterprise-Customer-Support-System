@@ -10,7 +10,6 @@ from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import json
-
 from sqlalchemy import create_engine, Column, Integer, String, func, desc
 from sqlalchemy.orm import sessionmaker, declarative_base
 
@@ -20,7 +19,9 @@ from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnableSequence
 from langchain.memory import ConversationBufferWindowMemory
 
+# Alternative import approach
 import sys
+import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from models import Base, User, Conversation, Message, Document
 
@@ -35,6 +36,17 @@ JWT_EXPIRATION = int(os.getenv("JWT_EXPIRATION", "86400"))  # 24 hours
 
 if not OPENAI_API_KEY:
     raise ValueError("Please set OPENAI_API_KEY in your .env file.")
+
+# ----- FastAPI init -----
+app = FastAPI(title="AI Customer Support API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or specify your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ----- Database setup -----
 # Get database URL from environment or use SQLite as fallback
@@ -53,79 +65,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-# ----- FastAPI init -----
-app = FastAPI(title="AI Customer Support API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # or specify your frontend domain
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ----- LangChain Setup -----
-prompt_template = PromptTemplate(
-    input_variables=["history", "user_input", "knowledge_base"],
-    template=(
-        "You are an AI customer support assistant. Be helpful, clear, and professional.\n"
-        "If you're unsure about an answer, be honest and suggest escalating to human support.\n\n"
-        "Below is information from our knowledge base that might help answer the question:\n"
-        "{knowledge_base}\n\n"
-        "Conversation history:\n"
-        "{history}\n"
-        "User: {user_input}\n"
-        "AI:"
-    )
-)
-
-# Use GPT-3.5-turbo-instruct for a good balance of cost and performance
-llm = OpenAI(
-    openai_api_key=OPENAI_API_KEY, 
-    temperature=0.5,
-    model_name="gpt-3.5-turbo-instruct"  # Using the more cost-effective model
-)
-pipeline = prompt_template | llm
-
-# Define path for FAISS index persistence
-KNOWLEDGE_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge_index.index")
-
 # ----- OAuth2 & JWT -----
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-# ----- Initialize Knowledge Base -----
-kb = KnowledgeBase(index_path=KNOWLEDGE_INDEX_PATH)
-
-# ----- Models / Schemas -----
-class UserCreate(BaseModel):
-    username: str
-    password: str
-    email: Optional[EmailStr] = None
-
-class UserLogin(BaseModel):
-    username: str
-    password: str
-
-class ChatRequest(BaseModel):
-    question: str
-
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    email: Optional[str]
-    is_admin: bool
-    created_at: datetime
-
-class AnalyticsResponse(BaseModel):
-    total_conversations: int
-    total_messages: int
-    avg_messages_per_conversation: float
-    escalation_rate: float
-    top_questions: List[Dict]
-    daily_usage: List[Dict]
-    estimated_input_cost: float
-    estimated_output_cost: float
-    estimated_total_cost: float
 
 def get_db():
     db = SessionLocal()
@@ -159,6 +100,65 @@ def admin_required(current_user: User = Depends(get_current_user)) -> User:
         raise HTTPException(status_code=403, detail="Admin privileges required")
     return current_user
 
+# ----- Models / Schemas -----
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    email: Optional[EmailStr] = None
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+class ChatRequest(BaseModel):
+    question: str
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: Optional[str]
+    is_admin: bool
+    created_at: datetime
+
+class AnalyticsResponse(BaseModel):
+    total_conversations: int
+    total_messages: int
+    avg_messages_per_conversation: float
+    escalation_rate: float
+    top_questions: List[Dict]
+    daily_usage: List[Dict]
+    estimated_input_cost: float
+    estimated_output_cost: float
+    estimated_total_cost: float
+
+# Define path for FAISS index persistence
+KNOWLEDGE_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge_index.index")
+
+# ----- Initialize Knowledge Base -----
+kb = KnowledgeBase(index_path=KNOWLEDGE_INDEX_PATH)
+
+# ----- LangChain Setup -----
+prompt_template = PromptTemplate(
+    input_variables=["history", "user_input", "knowledge_base"],
+    template=(
+        "You are an AI customer support assistant. Be helpful, clear, and professional.\n"
+        "If you're unsure about an answer, be honest and suggest escalating to human support.\n\n"
+        "Below is information from our knowledge base that might help answer the question:\n"
+        "{knowledge_base}\n\n"
+        "Conversation history:\n"
+        "{history}\n"
+        "User: {user_input}\n"
+        "AI:"
+    )
+)
+
+# Use GPT-3.5-turbo-instruct for a good balance of cost and performance
+llm = OpenAI(
+    openai_api_key=OPENAI_API_KEY, 
+    temperature=0.5,
+    model_name="gpt-3.5-turbo-instruct"  # Using the more cost-effective model
+)
+pipeline = prompt_template | llm
 
 # ----- Routes -----
 @app.get("/")
@@ -166,7 +166,6 @@ def root():
     return {"message": "AI-Powered Enterprise Customer Support System API", 
             "version": "1.0.0",
             "docs": "/docs"}
-
 
 @app.post("/register")
 def register(user_data: UserCreate, db=Depends(get_db)):
@@ -329,6 +328,35 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
         print(f"Chat endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+@app.post("/escalate")
+def escalate_to_human(current_user=Depends(get_current_user), db=Depends(get_db)):
+    """
+    Endpoint for escalation. Could integrate with CRM, Slack, etc.
+    """
+    # Find active conversation
+    active_conversation = db.query(Conversation).filter(
+        Conversation.user_id == current_user.id,
+        Conversation.end_time.is_(None)
+    ).order_by(desc(Conversation.start_time)).first()
+    
+    if not active_conversation:
+        raise HTTPException(status_code=404, detail="No active conversation found")
+    
+    # Mark last AI message as escalated
+    last_ai_message = db.query(Message).filter(
+        Message.conversation_id == active_conversation.id,
+        Message.role == "assistant"
+    ).order_by(desc(Message.timestamp)).first()
+    
+    if last_ai_message:
+        last_ai_message.was_escalated = True
+        db.commit()
+    
+    # In a real system, we would trigger notifications to human support team
+    # This could be implemented through webhooks, email, Slack, etc.
+    
+    return {"message": f"User {current_user.username} escalated to human support for conversation {active_conversation.id}."}
+
 # ----- Knowledge Base Endpoints -----
 @app.post("/knowledge/upload")
 async def upload_document(
@@ -403,3 +431,175 @@ def search_knowledge_base(
         })
     
     return {"results": formatted_results}
+
+# ----- Admin Endpoints -----
+@app.get("/admin/users", response_model=List[UserResponse])
+def list_users(current_user: User = Depends(admin_required), db = Depends(get_db)):
+    """
+    List all users (admin only)
+    """
+    users = db.query(User).all()
+    return users
+
+@app.post("/admin/users/{user_id}/make-admin")
+def make_admin(user_id: int, current_user: User = Depends(admin_required), db = Depends(get_db)):
+    """
+    Promote a user to admin (admin only)
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.is_admin = True
+    db.commit()
+    
+    return {"message": f"User {user.username} has been promoted to admin"}
+
+# ----- Analytics Endpoints -----
+@app.get("/admin/analytics", response_model=AnalyticsResponse)
+def get_analytics(
+    days: int = Query(30, ge=1, le=365),
+    current_user: User = Depends(admin_required), 
+    db = Depends(get_db)
+):
+    # Calculate time range
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+    
+    # Total conversations in period
+    total_conversations = db.query(func.count(Conversation.id)).filter(
+        Conversation.start_time >= start_date
+    ).scalar()
+    
+    # Total messages in period
+    total_messages = db.query(func.count(Message.id)).join(Conversation).filter(
+        Conversation.start_time >= start_date
+    ).scalar()
+    
+    # Average messages per conversation
+    avg_messages = float(total_messages / total_conversations) if total_conversations > 0 else 0.0
+    
+    # Escalation rates per conversation
+    escalated_messages = db.query(func.count(Message.id)).filter(
+        Message.timestamp >= start_date,
+        Message.was_escalated == True
+    ).scalar()
+    
+    escalation_rate = float(escalated_messages / total_messages * 100) if total_messages > 0 else 0.0
+    
+    # Estimate token usage and cost
+    # Assume an average of 500 tokens per user message and 750 tokens per AI response
+    user_messages = db.query(func.count(Message.id)).filter(
+        Message.timestamp >= start_date,
+        Message.role == "user"
+    ).scalar()
+    
+    ai_messages = db.query(func.count(Message.id)).filter(
+        Message.timestamp >= start_date,
+        Message.role == "assistant"
+    ).scalar()
+    
+    # Estimate token usage - convert any potential numpy types to Python native types
+    estimated_user_tokens = int(user_messages * 500)
+    estimated_ai_tokens = int(ai_messages * 750)
+    
+    # Calculate estimated cost (gpt-3.5-turbo-instruct pricing)
+    # Input: $0.0015/1K tokens, Output: $0.0020/1K tokens
+    estimated_input_cost = float((estimated_user_tokens / 1000) * 0.0015)
+    estimated_output_cost = float((estimated_ai_tokens / 1000) * 0.0020)
+    estimated_total_cost = float(estimated_input_cost + estimated_output_cost)
+    
+    # Top user questions (most frequent)
+    top_questions_query = db.query(
+        Message.content, 
+        func.count(Message.id).label('count')
+    ).filter(
+        Message.timestamp >= start_date,
+        Message.role == "user"
+    ).group_by(Message.content).order_by(desc('count')).limit(10).all()
+    
+    top_questions = [{"question": q.content, "count": int(q.count)} for q in top_questions_query]
+    
+    # Daily usage
+    daily_usage = []
+    for day_offset in range(min(days, 30)):  # Limit to 30 points on chart
+        day_date = end_date - timedelta(days=day_offset)
+        day_start = day_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        
+        day_count = db.query(func.count(Message.id)).filter(
+            Message.timestamp >= day_start,
+            Message.timestamp < day_end,
+            Message.role == "user"
+        ).scalar()
+        
+        daily_usage.append({
+            "date": day_start.strftime("%Y-%m-%d"),
+            "message_count": int(day_count)
+        })
+    
+    # Reverse to get chronological order
+    daily_usage.reverse()
+    
+    return {
+        "total_conversations": int(total_conversations),
+        "total_messages": int(total_messages),
+        "avg_messages_per_conversation": round(float(avg_messages), 2),
+        "escalation_rate": round(float(escalation_rate), 2),
+        "top_questions": top_questions,
+        "daily_usage": daily_usage,
+        "estimated_input_cost": round(float(estimated_input_cost), 4),
+        "estimated_output_cost": round(float(estimated_output_cost), 4),
+        "estimated_total_cost": round(float(estimated_total_cost), 4),
+        "estimated_user_tokens": int(estimated_user_tokens),
+        "estimated_ai_tokens": int(estimated_ai_tokens),
+        "days_in_period": int(days)  # Add this for calculating monthly run rate
+    }
+
+# Add a new endpoint to retrieve conversation history
+@app.get("/conversation/history")
+def get_conversation_history(current_user=Depends(get_current_user), db=Depends(get_db)):
+    """
+    Get the active conversation history for the current user
+    """
+    try:
+        # Find the active conversation
+        active_conversation = db.query(Conversation).filter(
+            Conversation.user_id == current_user.id,
+            Conversation.end_time.is_(None)
+        ).order_by(desc(Conversation.start_time)).first()
+        
+        if not active_conversation:
+            # No active conversation found
+            return {"active_conversation_id": None, "messages": []}
+        
+        # Retrieve conversation messages
+        messages = db.query(Message).filter(
+            Message.conversation_id == active_conversation.id
+        ).order_by(Message.timestamp).all()
+        
+        # Format messages for the response
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append({
+                "role": msg.role,
+                "content": msg.content,
+                "timestamp": msg.timestamp.isoformat(),
+                "confidence_score": msg.confidence_score,
+                "was_escalated": msg.was_escalated
+            })
+        
+        return {
+            "active_conversation_id": active_conversation.id,
+            "start_time": active_conversation.start_time.isoformat(),
+            "messages": formatted_messages
+        }
+    
+    except Exception as e:
+        print(f"Error retrieving conversation history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# For development use only - to be removed in production
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

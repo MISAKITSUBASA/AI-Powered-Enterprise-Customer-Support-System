@@ -45,19 +45,13 @@ class KnowledgeBase:
         """Load index and documents from disk if they exist"""
         try:
             if os.path.exists(self.index_path):
-                print(f"Loading existing index from {self.index_path}")
                 self.index = faiss.read_index(self.index_path)
                 
                 if os.path.exists(self.documents_path):
-                    print(f"Loading documents from {self.documents_path}")
                     self.documents = np.load(self.documents_path, allow_pickle=True).tolist()
-                    print(f"Loaded {len(self.documents)} documents")
             else:
-                print(f"No existing index found at {self.index_path}, creating new index")
                 self.index = faiss.IndexFlatL2(self.dimension)
-        except Exception as e:
-            print(f"Error loading index or documents: {str(e)}")
-            print("Creating new index")
+        except Exception:
             self.index = faiss.IndexFlatL2(self.dimension)
             self.documents = []
     
@@ -107,7 +101,7 @@ class KnowledgeBase:
             # Split documents into chunks
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
-                chunk_overlap=100
+                chunk_overlap=200
             )
             documents = text_splitter.split_documents(raw_documents)
             
@@ -116,14 +110,17 @@ class KnowledgeBase:
             new_embeddings = self.embeddings.embed_documents(texts)
             
             # Add to FAISS index
-            faiss.normalize_L2(np.array(new_embeddings).astype('float32'))
-            self.index.add(np.array(new_embeddings).astype('float32'))
+            embeddings_array = np.array(new_embeddings).astype('float32')
+            faiss.normalize_L2(embeddings_array)
+            self.index.add(embeddings_array)
             
             # Store documents with their metadata
-            for doc in documents:
+            original_count = len(self.documents)
+            for i, doc in enumerate(documents):
                 self.documents.append({
                     "content": doc.page_content,
-                    "metadata": doc.metadata
+                    "metadata": doc.metadata,
+                    "embedding_id": original_count + i  # Track the corresponding embedding index
                 })
             
             # Clean up the temporary file
@@ -135,7 +132,8 @@ class KnowledgeBase:
             return True
             
         except Exception as e:
-            print(f"Error adding document: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def _save_index_and_documents(self):
@@ -148,16 +146,28 @@ class KnowledgeBase:
             
             # Save FAISS index
             faiss.write_index(self.index, self.index_path)
-            print(f"Saved index to {self.index_path}")
             
             # Save documents
             np.save(self.documents_path, self.documents)
-            print(f"Saved {len(self.documents)} documents to {self.documents_path}")
             
             return True
-        except Exception as e:
-            print(f"Error saving index or documents: {str(e)}")
+        except Exception:
             return False
+    
+    def get_document_count(self) -> int:
+        """Return the number of document chunks in the knowledge base"""
+        return len(self.documents)
+    
+    def get_document_sample(self, n: int = 5) -> List[Dict[str, Any]]:
+        """Return a sample of documents for verification purposes"""
+        if not self.documents:
+            return []
+        
+        import random
+        sample_size = min(n, len(self.documents))
+        sample_indices = random.sample(range(len(self.documents)), sample_size)
+        
+        return [self.documents[i] for i in sample_indices]
     
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """
@@ -175,16 +185,40 @@ class KnowledgeBase:
         faiss.normalize_L2(query_embedding_normalized)
         
         # Search the index
-        scores, indices = self.index.search(query_embedding_normalized, min(top_k, self.index.ntotal))
+        k = min(top_k * 2, self.index.ntotal)  # Get more results initially for better filtering
+        scores, indices = self.index.search(query_embedding_normalized, k)
         
         # Format results
         results = []
         for i, idx in enumerate(indices[0]):
             if idx != -1:  # -1 indicates no more results
+                # Convert distance score to similarity score (higher is better)
+                # FAISS L2 distance: smaller is closer, so we invert and normalize
+                # Convert numpy.float32 to Python float to ensure JSON serialization works
+                similarity_score = float(max(0.0, 1.0 - (float(scores[0][i]) / 2.0)))
+                
+                doc = self.documents[idx]
                 results.append({
-                    "content": self.documents[idx]["content"],
-                    "metadata": self.documents[idx]["metadata"],
-                    "score": float(scores[0][i])
+                    "content": doc["content"],
+                    "metadata": doc["metadata"],
+                    "score": similarity_score
                 })
         
+        # Sort by score and take top_k
+        results = sorted(results, key=lambda x: x["score"], reverse=True)[:top_k]
+        
         return results
+    
+    def search_by_filename(self, filename: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Find documents by filename - useful for debugging
+        Returns matching document chunks
+        """
+        matches = []
+        for doc in self.documents:
+            if doc["metadata"].get("file_name", "").lower() == filename.lower():
+                matches.append(doc)
+                if len(matches) >= limit:
+                    break
+        
+        return matches
