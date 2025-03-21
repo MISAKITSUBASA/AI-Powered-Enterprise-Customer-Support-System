@@ -31,7 +31,6 @@ class KnowledgeBase:
         
         # Storage for document content and metadata
         self.documents = []
-        self.document_embeddings = None
         
         # Create or load FAISS index
         self.index_path = index_path if index_path else DEFAULT_INDEX_PATH
@@ -131,7 +130,7 @@ class KnowledgeBase:
             
             return True
             
-        except Exception as e:
+        except Exception:
             import traceback
             traceback.print_exc()
             return False
@@ -153,21 +152,6 @@ class KnowledgeBase:
             return True
         except Exception:
             return False
-    
-    def get_document_count(self) -> int:
-        """Return the number of document chunks in the knowledge base"""
-        return len(self.documents)
-    
-    def get_document_sample(self, n: int = 5) -> List[Dict[str, Any]]:
-        """Return a sample of documents for verification purposes"""
-        if not self.documents:
-            return []
-        
-        import random
-        sample_size = min(n, len(self.documents))
-        sample_indices = random.sample(range(len(self.documents)), sample_size)
-        
-        return [self.documents[i] for i in sample_indices]
     
     def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """
@@ -208,17 +192,3 @@ class KnowledgeBase:
         results = sorted(results, key=lambda x: x["score"], reverse=True)[:top_k]
         
         return results
-    
-    def search_by_filename(self, filename: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Find documents by filename - useful for debugging
-        Returns matching document chunks
-        """
-        matches = []
-        for doc in self.documents:
-            if doc["metadata"].get("file_name", "").lower() == filename.lower():
-                matches.append(doc)
-                if len(matches) >= limit:
-                    break
-        
-        return matches

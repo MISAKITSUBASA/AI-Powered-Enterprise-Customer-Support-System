@@ -17,11 +17,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from langchain_openai import OpenAI
 from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnableSequence
-from langchain.memory import ConversationBufferWindowMemory
 
 # Alternative import approach
 import sys
-import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from models import Base, User, Conversation, Message, Document
 
@@ -156,7 +154,7 @@ prompt_template = PromptTemplate(
 llm = OpenAI(
     openai_api_key=OPENAI_API_KEY, 
     temperature=0.5,
-    model_name="gpt-3.5-turbo-instruct"  # Using the more cost-effective model
+    model_name="gpt-3.5-turbo-instruct"
 )
 pipeline = prompt_template | llm
 
@@ -351,9 +349,6 @@ def escalate_to_human(current_user=Depends(get_current_user), db=Depends(get_db)
     if last_ai_message:
         last_ai_message.was_escalated = True
         db.commit()
-    
-    # In a real system, we would trigger notifications to human support team
-    # This could be implemented through webhooks, email, Slack, etc.
     
     return {"message": f"User {current_user.username} escalated to human support for conversation {active_conversation.id}."}
 
@@ -550,13 +545,9 @@ def get_analytics(
         "daily_usage": daily_usage,
         "estimated_input_cost": round(float(estimated_input_cost), 4),
         "estimated_output_cost": round(float(estimated_output_cost), 4),
-        "estimated_total_cost": round(float(estimated_total_cost), 4),
-        "estimated_user_tokens": int(estimated_user_tokens),
-        "estimated_ai_tokens": int(estimated_ai_tokens),
-        "days_in_period": int(days)  # Add this for calculating monthly run rate
+        "estimated_total_cost": round(float(estimated_total_cost), 4)
     }
 
-# Add a new endpoint to retrieve conversation history
 @app.get("/conversation/history")
 def get_conversation_history(current_user=Depends(get_current_user), db=Depends(get_db)):
     """
@@ -585,7 +576,7 @@ def get_conversation_history(current_user=Depends(get_current_user), db=Depends(
                 "role": msg.role,
                 "content": msg.content,
                 "timestamp": msg.timestamp.isoformat(),
-                "confidence_score": msg.confidence_score,
+                "confidence_score": float(msg.confidence_score) if msg.confidence_score else None,
                 "was_escalated": msg.was_escalated
             })
         
