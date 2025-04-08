@@ -8,14 +8,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file first for better caching
-COPY requirement.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirement.txt /app/requirement.txt
+RUN pip install --no-cache-dir -r requirement.txt
 
 # Create data directory for persistent storage
 RUN mkdir -p /app/data
 
 # Copy application code
 COPY backend/ /app/
+
+# Copy .env file for environment variables
+COPY .env /app/.env
 
 # Fix permissions
 RUN useradd -m appuser && chown -R appuser:appuser /app

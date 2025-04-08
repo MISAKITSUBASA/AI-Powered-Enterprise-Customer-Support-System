@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext'; // Add this import
 
 function Admin() {
   const [loading, setLoading] = useState(true);
@@ -13,8 +14,8 @@ function Admin() {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const navigate = useNavigate();
+  const { logout } = useAuth(); // Add this line to get the logout function
 
-  // Check if user is admin
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -22,7 +23,6 @@ function Admin() {
       return;
     }
 
-    // Decode JWT to check admin status (for UI only, backend will validate)
     try {
       const base64Url = token.split('.')[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
@@ -37,7 +37,6 @@ function Admin() {
       navigate('/');
     }
 
-    // Load initial data
     fetchAnalytics();
     fetchUsers();
   }, [navigate]);
@@ -105,7 +104,6 @@ function Admin() {
       
       setUploadStatus('File uploaded successfully');
       setUploadFile(null);
-      // Reset the file input
       document.getElementById('fileInput').value = '';
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -122,7 +120,6 @@ function Admin() {
         },
       });
       
-      // Refresh users list
       fetchUsers();
       alert('User promoted to admin successfully');
     } catch (error) {
@@ -160,369 +157,292 @@ function Admin() {
     }
   };
 
+  const handleLogout = () => {
+    // Use the AuthContext logout function instead of handling it directly
+    logout();
+    // No need to navigate as the logout function will handle that
+  };
+
   return (
-    <div style={{ margin: '2rem' }}>
-      <h1>Admin Dashboard</h1>
+    <div style={{ backgroundColor: '#f5f7fb', minHeight: '100vh' }}>
+      <header style={{ 
+        padding: '1rem 2rem',
+        backgroundColor: 'white',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '2rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <img 
+            src="https://cdn-icons-png.flaticon.com/512/2091/2091536.png" 
+            alt="Admin Dashboard" 
+            style={{ height: '32px', marginRight: '1rem' }}
+          />
+          <h1 style={{ fontSize: '1.5rem', margin: 0 }}>Admin Dashboard</h1>
+        </div>
+        
+        <div>
+          <button 
+            onClick={() => navigate('/chat')}
+            className="btn-secondary"
+            style={{ marginRight: '1rem' }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style={{ marginRight: '0.5rem' }}>
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+              <path d="M5.255 5.786a.237.237 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286zm1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.94-1.029-.94-.584 0-1.009.388-1.009.94z"/>
+            </svg>
+            Support Chat
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="btn-error"
+            style={{ 
+              padding: '0.5rem 1rem',
+              display: 'flex',
+              alignItems: 'center',
+              fontSize: '1rem',
+              fontWeight: '500'
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style={{ marginRight: '0.5rem' }}>
+              <path fillRule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2z"/>
+              <path fillRule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/>
+            </svg>
+            Logout
+          </button>
+        </div>
+      </header>
       
-      {/* Navigation Tabs */}
-      <div style={{ marginBottom: '1.5rem', borderBottom: '1px solid #ccc' }}>
-        <button 
-          onClick={() => setActiveTab('analytics')} 
-          style={{ 
-            padding: '0.5rem 1rem',
-            backgroundColor: activeTab === 'analytics' ? '#007BFF' : 'white',
-            color: activeTab === 'analytics' ? 'white' : 'black',
-            border: 'none',
-            marginRight: '1rem',
-            cursor: 'pointer'
-          }}
-        >
-          Analytics
-        </button>
-        <button 
-          onClick={() => setActiveTab('users')} 
-          style={{ 
-            padding: '0.5rem 1rem',
-            backgroundColor: activeTab === 'users' ? '#007BFF' : 'white',
-            color: activeTab === 'users' ? 'white' : 'black', 
-            border: 'none',
-            marginRight: '1rem',
-            cursor: 'pointer'
-          }}
-        >
-          Users
-        </button>
-        <button 
-          onClick={() => setActiveTab('knowledge')} 
-          style={{ 
-            padding: '0.5rem 1rem',
-            backgroundColor: activeTab === 'knowledge' ? '#007BFF' : 'white',
-            color: activeTab === 'knowledge' ? 'white' : 'black',
-            border: 'none',
-            cursor: 'pointer'
-          }}
-        >
-          Knowledge Base
-        </button>
-        <button 
-          onClick={() => setActiveTab('costs')} 
-          style={{ 
-            padding: '0.5rem 1rem',
-            backgroundColor: activeTab === 'costs' ? '#007BFF' : 'white',
-            color: activeTab === 'costs' ? 'white' : 'black',
-            border: 'none',
-            cursor: 'pointer'
-          }}
-        >
-          Cost Estimates
-        </button>
+      <div className="container">
+        <div style={{ 
+          display: 'flex',
+          backgroundColor: 'white',
+          borderRadius: 'var(--border-radius)',
+          boxShadow: 'var(--box-shadow)',
+          marginBottom: '2rem',
+          overflow: 'hidden'
+        }}>
+          <TabButton 
+            active={activeTab === 'analytics'} 
+            onClick={() => setActiveTab('analytics')}
+            icon="https://cdn-icons-png.flaticon.com/512/3688/3688532.png"
+          >
+            Analytics
+          </TabButton>
+          <TabButton 
+            active={activeTab === 'users'} 
+            onClick={() => setActiveTab('users')}
+            icon="https://cdn-icons-png.flaticon.com/512/681/681494.png"
+          >
+            Users
+          </TabButton>
+          <TabButton 
+            active={activeTab === 'knowledge'} 
+            onClick={() => setActiveTab('knowledge')}
+            icon="https://cdn-icons-png.flaticon.com/512/2232/2232688.png"
+          >
+            Knowledge Base
+          </TabButton>
+          <TabButton 
+            active={activeTab === 'costs'} 
+            onClick={() => setActiveTab('costs')}
+            icon="https://cdn-icons-png.flaticon.com/512/2331/2331941.png"
+          >
+            Cost Estimates
+          </TabButton>
+        </div>
+        
+        <div className="card fade-in">
+          {activeTab === 'analytics' && (
+            <div>
+              <div className="section-header">
+                <h2>System Analytics</h2>
+                {loading && <div className="loading-spinner-small"></div>}
+              </div>
+              
+              {loading ? (
+                <div className="loading-container">
+                  <div className="loading-spinner"></div>
+                  <p>Loading analytics data...</p>
+                </div>
+              ) : analytics ? (
+                <div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
+                    <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
+                      <h3>Total Conversations</h3>
+                      <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{analytics.total_conversations}</p>
+                    </div>
+                    <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
+                      <h3>Messages</h3>
+                      <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{analytics.total_messages}</p>
+                    </div>
+                    <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
+                      <h3>Avg. Messages Per Conversation</h3>
+                      <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{analytics.avg_messages_per_conversation}</p>
+                    </div>
+                    <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
+                      <h3>Escalation Rate</h3>
+                      <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{analytics.escalation_rate}%</p>
+                    </div>
+                  </div>
+                  
+                  <h3>Top Questions</h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Question</th>
+                        <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analytics.top_questions.map((item, index) => (
+                        <tr key={index}>
+                          <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>{item.question}</td>
+                          <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>{item.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  <h3>Daily Usage</h3>
+                  <div style={{ height: '300px', border: '1px solid #ddd', padding: '1rem', position: 'relative' }}>
+                    <div style={{ display: 'flex', height: '250px', alignItems: 'flex-end', gap: '5px' }}>
+                      {analytics.daily_usage.map((day, index) => {
+                        const maxCount = Math.max(...analytics.daily_usage.map(d => d.message_count));
+                        const height = day.message_count > 0 ? (day.message_count / maxCount) * 100 : 0;
+                        
+                        return (
+                          <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <div style={{ 
+                              height: `${height}%`, 
+                              width: '80%',
+                              backgroundColor: '#007BFF', 
+                              minHeight: day.message_count > 0 ? '5px' : '0',
+                              position: 'relative'
+                            }}>
+                              <span style={{ position: 'absolute', top: '-20px', fontSize: '12px' }}>
+                                {day.message_count}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '10px', marginTop: '5px' }}>
+                              {day.date.substring(5)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <img 
+                    src="https://cdn-icons-png.flaticon.com/512/8027/8027825.png" 
+                    alt="No data"
+                    style={{ width: '100px', marginBottom: '1rem', opacity: 0.6 }}
+                  />
+                  <p>No analytics data available</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       
-      {/* Analytics Tab */}
-      {activeTab === 'analytics' && (
-        <div>
-          <h2>System Analytics</h2>
-          {loading ? (
-            <p>Loading analytics...</p>
-          ) : analytics ? (
-            <div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
-                <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
-                  <h3>Total Conversations</h3>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{analytics.total_conversations}</p>
-                </div>
-                <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
-                  <h3>Messages</h3>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{analytics.total_messages}</p>
-                </div>
-                <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
-                  <h3>Avg. Messages Per Conversation</h3>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{analytics.avg_messages_per_conversation}</p>
-                </div>
-                <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
-                  <h3>Escalation Rate</h3>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{analytics.escalation_rate}%</p>
-                </div>
-              </div>
-              
-              <h3>Top Questions</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem' }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Question</th>
-                    <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Count</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analytics.top_questions.map((item, index) => (
-                    <tr key={index}>
-                      <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>{item.question}</td>
-                      <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>{item.count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              
-              <h3>Daily Usage</h3>
-              <div style={{ height: '300px', border: '1px solid #ddd', padding: '1rem', position: 'relative' }}>
-                {/* Simple bar chart */}
-                <div style={{ display: 'flex', height: '250px', alignItems: 'flex-end', gap: '5px' }}>
-                  {analytics.daily_usage.map((day, index) => {
-                    const maxCount = Math.max(...analytics.daily_usage.map(d => d.message_count));
-                    const height = day.message_count > 0 ? (day.message_count / maxCount) * 100 : 0;
-                    
-                    return (
-                      <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <div style={{ 
-                          height: `${height}%`, 
-                          width: '80%',
-                          backgroundColor: '#007BFF', 
-                          minHeight: day.message_count > 0 ? '5px' : '0',
-                          position: 'relative'
-                        }}>
-                          <span style={{ position: 'absolute', top: '-20px', fontSize: '12px' }}>
-                            {day.message_count}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: '10px', marginTop: '5px' }}>
-                          {day.date.substring(5)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p>No analytics data available</p>
-          )}
-        </div>
-      )}
-      
-      {/* Users Tab */}
-      {activeTab === 'users' && (
-        <div>
-          <h2>User Management</h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Username</th>
-                <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Email</th>
-                <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Created</th>
-                <th style={{ textAlign: 'center', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Admin</th>
-                <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(user => (
-                <tr key={user.id}>
-                  <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>{user.username}</td>
-                  <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>{user.email || '-'}</td>
-                  <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>
-                    {new Date(user.created_at).toLocaleDateString()}
-                  </td>
-                  <td style={{ textAlign: 'center', padding: '0.5rem', borderBottom: '1px solid #eee' }}>
-                    {user.is_admin ? '✓' : '-'}
-                  </td>
-                  <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>
-                    {!user.is_admin && (
-                      <button 
-                        onClick={() => promoteToAdmin(user.id)}
-                        style={{ padding: '0.25rem 0.5rem', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
-                      >
-                        Make Admin
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      
-      {/* Knowledge Base Tab */}
-      {activeTab === 'knowledge' && (
-        <div>
-          <h2>Knowledge Base Management</h2>
-          <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px' }}>
-            <h3>Upload New Document</h3>
-            <p>Upload PDF, Word, Excel, or text files (max 50MB)</p>
-            
-            <div style={{ marginTop: '1rem' }}>
-              <input 
-                type="file" 
-                id="fileInput"
-                onChange={handleFileChange} 
-                style={{ marginBottom: '1rem' }} 
-              />
-              
-              <div>
-                <button 
-                  onClick={handleFileUpload}
-                  style={{ padding: '0.5rem 1rem', backgroundColor: '#007BFF', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
-                >
-                  Upload
-                </button>
-                {uploadStatus && (
-                  <span style={{ marginLeft: '1rem', color: uploadStatus.includes('Error') ? 'red' : 'green' }}>
-                    {uploadStatus}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          <div style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px' }}>
-            <h3>Knowledge Base Search</h3>
-            <p>Test your knowledge base by searching for information</p>
-            
-            <div style={{ display: 'flex', marginTop: '1rem', marginBottom: '1rem' }}>
-              <input 
-                type="text" 
-                placeholder="Enter search query (min 3 characters)"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{ flex: 1, padding: '0.5rem', marginRight: '0.5rem' }}
-              />
-              <button 
-                onClick={handleSearch}
-                style={{ 
-                  padding: '0.5rem 1rem', 
-                  backgroundColor: '#007BFF', 
-                  color: 'white', 
-                  border: 'none', 
-                  borderRadius: '3px', 
-                  cursor: 'pointer',
-                  opacity: isSearching ? 0.7 : 1
-                }}
-                disabled={isSearching}
-              >
-                {isSearching ? 'Searching...' : 'Search'}
-              </button>
-            </div>
-            
-            {/* Search Results */}
-            {searchResults.length > 0 && (
-              <div>
-                <h4>Search Results</h4>
-                <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #ddd', padding: '1rem' }}>
-                  {searchResults.map((result, index) => (
-                    <div key={index} style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'white', borderRadius: '5px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <strong>Source: {result.file_name}</strong>
-                        <span>Relevance: {Math.round(result.relevance_score * 100)}%</span>
-                      </div>
-                      <div>{result.content}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {/* Cost Estimates Tab */}
-      {activeTab === 'costs' && (
-        <div>
-          <h2>Cost Estimates</h2>
-          {loading ? (
-            <p>Loading cost data...</p>
-          ) : analytics ? (
-            <div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
-                <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
-                  <h3>Estimated OpenAI Cost (Current Period)</h3>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold' }}>${analytics.estimated_total_cost?.toFixed(2) || '0.00'}</p>
-                </div>
-                <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px', flex: 1, minWidth: '200px' }}>
-                  <h3>Estimated Monthly Run Rate</h3>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold' }}>${(analytics.estimated_total_cost ? (analytics.estimated_total_cost / analytics.days_in_period) * 30 : 0).toFixed(2)}</p>
-                </div>
-              </div>
-              
-              <h3>Token Usage Breakdown</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem' }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Category</th>
-                    <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Tokens</th>
-                    <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>Input (User Messages)</td>
-                    <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>{analytics.estimated_user_tokens?.toLocaleString() || '0'}</td>
-                    <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>${analytics.estimated_input_cost?.toFixed(2) || '0.00'}</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>Output (AI Responses)</td>
-                    <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>{analytics.estimated_ai_tokens?.toLocaleString() || '0'}</td>
-                    <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>${analytics.estimated_output_cost?.toFixed(2) || '0.00'}</td>
-                  </tr>
-                  <tr style={{ fontWeight: 'bold' }}>
-                    <td style={{ padding: '0.5rem' }}>Total</td>
-                    <td style={{ textAlign: 'right', padding: '0.5rem' }}>{(analytics.estimated_user_tokens + analytics.estimated_ai_tokens)?.toLocaleString() || '0'}</td>
-                    <td style={{ textAlign: 'right', padding: '0.5rem' }}>${analytics.estimated_total_cost?.toFixed(2) || '0.00'}</td>
-                  </tr>
-                </tbody>
-              </table>
-              
-              <h3>Cost Optimization Tips</h3>
-              <ul style={{ lineHeight: '1.5' }}>
-                <li>Consider implementing caching for common questions to reduce API calls</li>
-                <li>Adjust conversation history length to optimize token usage</li>
-                <li>Set up usage limits and alerts to avoid unexpected charges</li>
-                <li>See the COST_ESTIMATE.md file for detailed cost projections</li>
-              </ul>
-              
-              <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: '#f8f9fa', borderRadius: '5px' }}>
-                <h3>AWS Infrastructure Estimate</h3>
-                <p>Based on your current usage patterns:</p>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Component</th>
-                      <th style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #ddd' }}>Monthly Estimate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>EC2/Elastic Beanstalk (t3.small)</td>
-                      <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>$16.64</td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>S3 Storage (10GB)</td>
-                      <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>$0.46</td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>RDS Database (if used)</td>
-                      <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>$12.70</td>
-                    </tr>
-                    <tr>
-                      <td style={{ padding: '0.5rem', borderBottom: '1px solid #eee' }}>Data Transfer (20GB)</td>
-                      <td style={{ textAlign: 'right', padding: '0.5rem', borderBottom: '1px solid #eee' }}>$1.80</td>
-                    </tr>
-                    <tr style={{ fontWeight: 'bold' }}>
-                      <td style={{ padding: '0.5rem' }}>AWS Infrastructure Total</td>
-                      <td style={{ textAlign: 'right', padding: '0.5rem' }}>$31.60</td>
-                    </tr>
-                    <tr style={{ fontWeight: 'bold', backgroundColor: '#e9ecef' }}>
-                      <td style={{ padding: '0.5rem' }}>Combined Total (AWS + OpenAI)</td>
-                      <td style={{ textAlign: 'right', padding: '0.5rem' }}>${(31.60 + (analytics?.estimated_total_cost || 0)).toFixed(2)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <p>No cost data available</p>
-          )}
-        </div>
-      )}
+      <style jsx>{`
+        .section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 1.5rem;
+          border-bottom: 1px solid var(--gray-200);
+          padding-bottom: 1rem;
+        }
+        
+        .section-header h2 {
+          margin: 0;
+          font-size: 1.5rem;
+        }
+        
+        .loading-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem 1rem;
+          color: var(--gray-600);
+        }
+        
+        .loading-spinner {
+          width: 40px;
+          height: 40px;
+          border: 4px solid var(--gray-200);
+          border-top: 4px solid var(--primary);
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+          margin-bottom: 1rem;
+        }
+        
+        .loading-spinner-small {
+          width: 20px;
+          height: 20px;
+          border: 2px solid var(--gray-200);
+          border-top: 2px solid var(--primary);
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 3rem 1rem;
+          color: var(--gray-600);
+        }
+      `}</style>
     </div>
+  );
+}
+
+function TabButton({ children, active, onClick, icon }) {
+  return (
+    <button 
+      onClick={onClick} 
+      style={{ 
+        flex: 1,
+        padding: '1rem',
+        backgroundColor: active ? 'var(--primary)' : 'white',
+        color: active ? 'white' : 'var(--gray-700)',
+        border: 'none',
+        borderBottom: active ? 'none' : '1px solid var(--gray-200)',
+        cursor: 'pointer',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.3s ease',
+        gap: '0.5rem'
+      }}
+    >
+      <img 
+        src={icon} 
+        alt={children} 
+        style={{ 
+          width: '24px', 
+          height: '24px',
+          filter: active ? 'brightness(0) invert(1)' : 'none',
+          opacity: active ? 1 : 0.7
+        }} 
+      />
+      {children}
+    </button>
   );
 }
 

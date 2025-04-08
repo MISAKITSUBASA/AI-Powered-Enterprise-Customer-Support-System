@@ -27,6 +27,19 @@ from models import Base, User, Conversation, Message, Document
 from knowledge_base import KnowledgeBase
 from env_utils import get_openai_api_key, print_masked_key
 
+# Add this near the top of your file, after the imports
+import logging
+
+# Configure logging to show more details
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+
+# Get a logger for your application
+logger = logging.getLogger("app")
+
 # ----- Load env vars -----
 load_dotenv()
 OPENAI_API_KEY = get_openai_api_key()
