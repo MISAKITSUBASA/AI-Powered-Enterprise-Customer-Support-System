@@ -1,5 +1,5 @@
 # Build stage
-FROM node:19-alpine as build
+FROM node:19-alpine AS build
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY . ./
 RUN npm run build
 
 # Production stage
-FROM nginx:1.23-alpine  # Use a specific version tag
+FROM nginx:1.23-alpine
 
 # Copy built files from build stage
 COPY --from=build /app/build /usr/share/nginx/html
