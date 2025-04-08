@@ -16,6 +16,9 @@ function Admin() {
   const navigate = useNavigate();
   const { logout } = useAuth(); // Add this line to get the logout function
 
+  // Define API base URL - use relative path for Docker setup
+  const API_BASE_URL = '';  // Empty for relative paths with Nginx proxy
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -45,11 +48,13 @@ function Admin() {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/admin/analytics', {
+      console.log("Fetching analytics data...");
+      const response = await axios.get(`${API_BASE_URL}/admin/analytics`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
+      console.log("Analytics data received:", response.data);
       setAnalytics(response.data);
     } catch (error) {
       console.error('Error fetching analytics:', error);
@@ -65,11 +70,13 @@ function Admin() {
   const fetchUsers = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:8000/admin/users', {
+      console.log("Fetching users data...");
+      const response = await axios.get(`${API_BASE_URL}/admin/users`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
+      console.log("Users data received:", response.data);
       setUsers(response.data);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -95,7 +102,7 @@ function Admin() {
       const formData = new FormData();
       formData.append('file', uploadFile);
 
-      const response = await axios.post('http://localhost:8000/knowledge/upload', formData, {
+      const response = await axios.post(`${API_BASE_URL}/knowledge/upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data',
@@ -114,7 +121,7 @@ function Admin() {
   const promoteToAdmin = async (userId) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`http://localhost:8000/admin/users/${userId}/make-admin`, {}, {
+      await axios.post(`${API_BASE_URL}/admin/users/${userId}/make-admin`, {}, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -138,7 +145,7 @@ function Admin() {
     
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:8000/knowledge/search?query=${encodeURIComponent(searchQuery)}&top_k=5`, {
+      const response = await axios.get(`${API_BASE_URL}/knowledge/search?query=${encodeURIComponent(searchQuery)}&top_k=5`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
