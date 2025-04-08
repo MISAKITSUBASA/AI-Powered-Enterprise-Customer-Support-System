@@ -23,6 +23,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:80"
+    volumes: []  # Explicitly define empty volumes to avoid auto-detection issues
     depends_on:
       - backend
     logging:
