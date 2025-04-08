@@ -13,6 +13,7 @@ function Admin() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [days, setDays] = useState(30); // Add this line to define the days variable
   const navigate = useNavigate();
   const { logout } = useAuth(); // Add this line to get the logout function
 
@@ -49,7 +50,8 @@ function Admin() {
       setLoading(true);
       const token = localStorage.getItem('token');
       console.log("Fetching analytics data...");
-      const response = await axios.get(`${API_BASE_URL}/admin/analytics`, {
+      // Include the days parameter in the API request
+      const response = await axios.get(`${API_BASE_URL}/admin/analytics?days=${days}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -350,6 +352,301 @@ function Admin() {
                     style={{ width: '100px', marginBottom: '1rem', opacity: 0.6 }}
                   />
                   <p>No analytics data available</p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* USERS TAB CONTENT */}
+          {activeTab === 'users' && (
+            <div>
+              <div className="section-header">
+                <h2>User Management</h2>
+              </div>
+              
+              {users.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>ID</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>Username</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>Email</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>Role</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>Created</th>
+                      <th style={{ textAlign: 'left', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map(user => (
+                      <tr key={user.id}>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>{user.id}</td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>{user.username}</td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>{user.email || '-'}</td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                          <span style={{ 
+                            backgroundColor: user.is_admin ? 'var(--primary)' : 'var(--gray-500)',
+                            color: 'white',
+                            padding: '0.25rem 0.5rem',
+                            borderRadius: '4px',
+                            fontSize: '0.8rem'
+                          }}>
+                            {user.is_admin ? 'Admin' : 'User'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                          {new Date(user.created_at).toLocaleDateString()}
+                        </td>
+                        <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                          {!user.is_admin && (
+                            <button
+                              onClick={() => promoteToAdmin(user.id)}
+                              style={{
+                                backgroundColor: 'var(--primary-light)',
+                                color: 'white',
+                                border: 'none',
+                                padding: '0.25rem 0.75rem',
+                                borderRadius: '4px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Make Admin
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state">
+                  <img 
+                    src="https://cdn-icons-png.flaticon.com/512/747/747376.png" 
+                    alt="No users"
+                    style={{ width: '100px', marginBottom: '1rem', opacity: 0.6 }}
+                  />
+                  <p>No users found</p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* KNOWLEDGE BASE TAB CONTENT */}
+          {activeTab === 'knowledge' && (
+            <div>
+              <div className="section-header">
+                <h2>Knowledge Base</h2>
+              </div>
+              
+              <div style={{ marginBottom: '2rem' }}>
+                <h3>Upload Document</h3>
+                <p style={{ marginBottom: '1rem' }}>Upload PDF, TXT, DOCX, or Excel files to the knowledge base.</p>
+                
+                <div style={{ 
+                  border: '2px dashed var(--gray-300)', 
+                  padding: '2rem', 
+                  borderRadius: '8px',
+                  textAlign: 'center',
+                  marginBottom: '1rem'
+                }}>
+                  <input
+                    type="file"
+                    id="fileInput"
+                    onChange={handleFileChange}
+                    style={{ display: 'none' }}
+                  />
+                  <label htmlFor="fileInput" style={{ 
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center'
+                  }}>
+                    <img 
+                      src="https://cdn-icons-png.flaticon.com/512/337/337946.png"
+                      alt="Upload"
+                      style={{ width: '48px', marginBottom: '1rem', opacity: 0.7 }}
+                    />
+                    <span>Click to select a file</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--gray-600)', marginTop: '0.5rem' }}>
+                      Supported: PDF, TXT, DOCX, XLS
+                    </span>
+                  </label>
+                </div>
+                
+                {uploadFile && (
+                  <div style={{ 
+                    backgroundColor: 'var(--gray-100)', 
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '1rem'
+                  }}>
+                    <div>
+                      <p style={{ fontWeight: '500' }}>{uploadFile.name}</p>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--gray-600)' }}>
+                        {(uploadFile.size / 1024).toFixed(2)} KB
+                      </p>
+                    </div>
+                    
+                    <button 
+                      onClick={handleFileUpload}
+                      className="btn-primary"
+                      style={{ minWidth: '100px' }}
+                    >
+                      Upload
+                    </button>
+                  </div>
+                )}
+                
+                {uploadStatus && (
+                  <div style={{ 
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    backgroundColor: uploadStatus.includes('successfully') 
+                      ? '#e8f5e9' : uploadStatus === 'Uploading...' 
+                      ? '#e3f2fd' : '#ffebee',
+                    marginTop: '1rem'
+                  }}>
+                    {uploadStatus}
+                  </div>
+                )}
+              </div>
+              
+              <div>
+                <h3>Search Knowledge Base</h3>
+                
+                <div style={{ display: 'flex', marginBottom: '1.5rem' }}>
+                  <input 
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Enter search query..."
+                    style={{ 
+                      flex: 1,
+                      padding: '0.75rem',
+                      borderRadius: '8px 0 0 8px',
+                      border: '1px solid var(--gray-300)',
+                      borderRight: 'none'
+                    }}
+                  />
+                  <button
+                    onClick={handleSearch}
+                    className="btn-primary"
+                    style={{ borderRadius: '0 8px 8px 0' }}
+                    disabled={isSearching}
+                  >
+                    {isSearching ? 'Searching...' : 'Search'}
+                  </button>
+                </div>
+                
+                {searchResults.length > 0 && (
+                  <div>
+                    <h4>Search Results</h4>
+                    {searchResults.map((result, index) => (
+                      <div key={index} style={{ 
+                        backgroundColor: 'var(--gray-100)',
+                        padding: '1rem',
+                        marginBottom: '1rem',
+                        borderRadius: '8px',
+                        borderLeft: '4px solid var(--primary)'
+                      }}>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '0.5rem' }}>
+                          {result.file_name} • Score: {(result.relevance_score * 100).toFixed(1)}%
+                        </div>
+                        <div style={{ whiteSpace: 'pre-line' }}>
+                          {result.content}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {/* COST ESTIMATES TAB CONTENT */}
+          {activeTab === 'costs' && (
+            <div>
+              <div className="section-header">
+                <h2>Cost Estimates</h2>
+              </div>
+              
+              {analytics && (
+                <div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
+                    <div style={{ padding: '1.5rem', backgroundColor: '#f8f9fa', borderRadius: '8px', flex: 1, minWidth: '250px' }}>
+                      <h3>Total Estimated Cost</h3>
+                      <p style={{ fontSize: '28px', fontWeight: 'bold', color: 'var(--primary)' }}>
+                        ${analytics.estimated_total_cost.toFixed(2)}
+                      </p>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)' }}>
+                        Last {days} days
+                      </p>
+                    </div>
+                    
+                    <div style={{ padding: '1.5rem', backgroundColor: '#f8f9fa', borderRadius: '8px', flex: 1, minWidth: '250px' }}>
+                      <h3>Input Costs</h3>
+                      <p style={{ fontSize: '28px', fontWeight: 'bold' }}>
+                        ${analytics.estimated_input_cost.toFixed(2)}
+                      </p>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)' }}>
+                        User messages processed
+                      </p>
+                    </div>
+                    
+                    <div style={{ padding: '1.5rem', backgroundColor: '#f8f9fa', borderRadius: '8px', flex: 1, minWidth: '250px' }}>
+                      <h3>Output Costs</h3>
+                      <p style={{ fontSize: '28px', fontWeight: 'bold' }}>
+                        ${analytics.estimated_output_cost.toFixed(2)}
+                      </p>
+                      <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)' }}>
+                        AI responses generated
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3>Cost Breakdown</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: 'left', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>Category</th>
+                          <th style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>Amount</th>
+                          <th style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #ddd' }}>Percentage</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>User Messages (Input)</td>
+                          <td style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                            ${analytics.estimated_input_cost.toFixed(2)}
+                          </td>
+                          <td style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                            {(analytics.estimated_input_cost / analytics.estimated_total_cost * 100).toFixed(1)}%
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>AI Responses (Output)</td>
+                          <td style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                            ${analytics.estimated_output_cost.toFixed(2)}
+                          </td>
+                          <td style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                            {(analytics.estimated_output_cost / analytics.estimated_total_cost * 100).toFixed(1)}%
+                          </td>
+                        </tr>
+                        <tr style={{ fontWeight: 'bold' }}>
+                          <td style={{ padding: '0.75rem' }}>Total</td>
+                          <td style={{ textAlign: 'right', padding: '0.75rem' }}>
+                            ${analytics.estimated_total_cost.toFixed(2)}
+                          </td>
+                          <td style={{ textAlign: 'right', padding: '0.75rem' }}>
+                            100%
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
