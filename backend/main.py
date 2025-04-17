@@ -29,9 +29,6 @@ from env_utils import get_openai_api_key, print_masked_key
 
 # Add this near the top of your file, after the imports
 import logging
-import openai
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from openai.error import RateLimitError, APIConnectionError, APIError
 
 # Configure logging to show more details
 logging.basicConfig(
@@ -177,16 +174,6 @@ llm = OpenAI(
 )
 pipeline = prompt_template | llm
 
-# Retry wrapper for LLM pipeline with exponential backoff on rate limits and transient errors
-@retry(
-    retry=retry_if_exception_type((RateLimitError, APIConnectionError, APIError)),
-    wait=wait_exponential(multiplier=1, min=2, max=60),
-    stop=stop_after_attempt(5),
-    reraise=True
-)
-def invoke_pipeline_with_retry(inputs: Dict):
-    return pipeline.invoke(inputs)
-
 # ----- Routes -----
 @app.get("/")
 def root():
@@ -304,7 +291,7 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
         ]) if knowledge_results else "No relevant information found in knowledge base."
         
         # Invoke LLM pipeline
-        response_text = invoke_pipeline_with_retry({
+        response_text = pipeline.invoke({
             "history": history_formatted,
             "user_input": user_input,
             "knowledge_base": knowledge_base_text
