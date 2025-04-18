@@ -1,6 +1,49 @@
-# Getting Started with Create React App
+# AI Customer Support System - Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This is the React frontend for the AI-Powered Enterprise Customer Support System. It provides an intuitive interface for users to interact with the AI assistant and for administrators to manage the system.
+
+## Features
+
+- **Responsive Chat Interface**: Modern, intuitive chat experience
+- **Emotion Analysis Visualization**: Visual indicators for detected user emotions
+- **Admin Dashboard**: Comprehensive analytics and system management
+- **Knowledge Base Management**: Upload and manage documents
+- **User Authentication**: Secure login and registration
+
+## Project Structure
+
+```
+frontend/
+├── src/                    # Source code
+│   ├── components/         # Reusable UI components
+│   ├── context/            # React context for state management
+│   ├── pages/              # Main page components
+│   │   ├── Admin.js        # Admin dashboard
+│   │   ├── Chat.js         # Chat interface
+│   │   ├── Login.js        # Login page
+│   │   └── Register.js     # Registration page
+│   └── styles/             # CSS stylesheets
+├── public/                 # Static assets
+└── build/                  # Production build output
+```
+
+## Environment Setup
+
+The frontend expects the backend API to be available. In development mode, API requests are proxied to the backend server.
+
+## Docker Deployment
+
+The frontend is containerized and can be deployed using Docker:
+
+```bash
+# Build the Docker image
+docker build -t customer-support-frontend .
+
+# Run the container
+docker run -p 3000:80 customer-support-frontend
+```
+
+The Dockerfile uses nginx to serve the static assets in production.
 
 ## Available Scripts
 
