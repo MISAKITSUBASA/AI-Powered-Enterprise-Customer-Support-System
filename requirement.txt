@@ -57,6 +57,7 @@ pathspec==0.12.1
 platformdirs==4.3.6
 pluggy==1.5.0
 propcache==0.3.0
+psycopg2-binary==2.9.9
 pycodestyle==2.12.1
 pycparser==2.22
 pydantic==2.10.6
@@ -70,6 +71,7 @@ pytest==8.3.5
 python-dotenv==1.0.1
 python-multipart==0.0.20
 PyYAML==6.0.2
+redis==5.0.1
 regex==2024.11.6
 requests==2.32.3
 requests-toolbelt==1.0.0

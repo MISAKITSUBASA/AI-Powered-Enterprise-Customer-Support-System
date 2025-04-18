@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file first for better caching
@@ -17,7 +18,7 @@ RUN mkdir -p /app/data
 # Copy application code
 COPY backend/ /app/
 
-# Copy .env file for environment variables
+# Copy .env file for environment variables if needed
 COPY .env /app/.env
 
 # Fix permissions
@@ -26,6 +27,7 @@ USER appuser
 
 # Set environment variables
 ENV PYTHONPATH=/app
+# Using PostgreSQL in docker-compose, so this is overridden there
 ENV DATABASE_URL=sqlite:////app/data/customer_support.db
 
 EXPOSE 8000

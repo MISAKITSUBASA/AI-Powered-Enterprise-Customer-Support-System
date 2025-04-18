@@ -635,6 +635,39 @@ function Admin() {
                             {(analytics.estimated_output_cost / analytics.estimated_total_cost * 100).toFixed(1)}%
                           </td>
                         </tr>
+                        {analytics.cache_statistics && (
+                          <>
+                            <tr style={{ backgroundColor: '#e3f2fd' }}>
+                              <td colSpan="3" style={{ padding: '0.75rem', borderBottom: '1px solid #eee', fontWeight: 'bold' }}>
+                                Cache Statistics
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>Cache Hit Rate</td>
+                              <td style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                                {analytics.cache_statistics.hit_rate.toFixed(1)}%
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                                {analytics.cache_statistics.total_requests} requests
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>Estimated Savings</td>
+                              <td style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee', color: 'green', fontWeight: 'bold' }}>
+                                ${analytics.cache_statistics.estimated_savings.toFixed(2)}
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                                {analytics.cache_statistics.hits} cache hits
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '0.75rem', borderBottom: '1px solid #eee' }}>Avg. Confidence (Cached)</td>
+                              <td colSpan="2" style={{ textAlign: 'right', padding: '0.75rem', borderBottom: '1px solid #eee' }}>
+                                {analytics.cache_statistics.avg_confidence.toFixed(1)}%
+                              </td>
+                            </tr>
+                          </>
+                        )}
                         <tr style={{ fontWeight: 'bold' }}>
                           <td style={{ padding: '0.75rem' }}>Total</td>
                           <td style={{ textAlign: 'right', padding: '0.75rem' }}>

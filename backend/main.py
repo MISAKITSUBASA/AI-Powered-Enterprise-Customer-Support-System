@@ -2,6 +2,8 @@ import os
 # Update JWT import statement
 import jwt
 import bcrypt
+import redis
+import hashlib
 from typing import Optional, Dict, List
 from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +47,61 @@ load_dotenv()
 OPENAI_API_KEY = get_openai_api_key()
 JWT_SECRET = os.getenv("JWT_SECRET", "changeme")  # for demo only
 JWT_EXPIRATION = int(os.getenv("JWT_EXPIRATION", "86400"))  # 24 hours
+
+# Redis configuration
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_TTL = int(os.getenv("REDIS_CACHE_TTL", "86400"))  # Default cache TTL: 24 hours
+
+# Initialize Redis connection
+try:
+    redis_client = redis.from_url(REDIS_URL)
+    redis_client.ping()  # Test connection
+    logger.info(f"Redis connected at {REDIS_URL}")
+except Exception as e:
+    logger.warning(f"Redis connection failed: {str(e)}. Caching will be disabled.")
+    redis_client = None
+
+# Redis caching helper functions
+def get_cache_key(question: str) -> str:
+    """Generate unique cache key using question hash"""
+    return f"ai_response:{hashlib.md5(question.encode()).hexdigest()}"
+
+def get_cached_response(question: str) -> Optional[Dict]:
+    """Retrieve cached response from Redis"""
+    if not redis_client:
+        return None
+        
+    cache_key = get_cache_key(question)
+    cached = redis_client.get(cache_key)
+    
+    if cached:
+        try:
+            logger.info(f"Cache hit for question: {question[:30]}...")
+            return json.loads(cached)
+        except:
+            return None
+    return None
+
+def cache_response(question: str, answer: str, confidence: float, escalate: bool, ttl: int = REDIS_TTL):
+    """Cache high-confidence responses to Redis"""
+    if not redis_client or confidence < 70:
+        return False
+        
+    cache_key = get_cache_key(question)
+    data = {
+        "answer": answer,
+        "confidence": confidence,
+        "escalate": escalate,
+        "cached_at": datetime.utcnow().isoformat()
+    }
+    
+    try:
+        redis_client.setex(cache_key, ttl, json.dumps(data))
+        logger.info(f"Cached response for '{question[:30]}...' with confidence {confidence:.2f}")
+        return True
+    except Exception as e:
+        logger.error(f"Error caching response: {str(e)}")
+        return False
 
 if not OPENAI_API_KEY:
     raise ValueError("Please set OPENAI_API_KEY in your .env file.")
@@ -247,68 +304,110 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
     try:
         user_id = current_user.id
         user_input = request.question.strip()
+        using_cache = False
         
         if not user_input:
             raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-        # Find or create conversation
-        active_conversation = db.query(Conversation).filter(
-            Conversation.user_id == user_id,
-            Conversation.end_time.is_(None)
-        ).order_by(desc(Conversation.start_time)).first()
+        # Track request count in Redis for statistics
+        if redis_client:
+            redis_client.incr("cache_request_count")
+
+        # Check Redis cache first for high-confidence responses
+        cached_response = get_cached_response(user_input)
         
-        if not active_conversation:
-            # Create a new conversation
-            active_conversation = Conversation(user_id=user_id)
-            db.add(active_conversation)
-            db.commit()
-            db.refresh(active_conversation)
-        
-        # Retrieve conversation history
-        history_messages = db.query(Message).filter(
-            Message.conversation_id == active_conversation.id
-        ).order_by(Message.timestamp).all()
-        
-        # Format conversation history
-        history_formatted = "\n".join([
-            f"{'User' if msg.role == 'user' else 'AI'}: {msg.content}"
-            for msg in history_messages[-10:]  # Keep last 10 messages for context
-        ])
-        
-        # Query knowledge base for relevant information
-        try:
-            knowledge_results = kb.search(user_input, top_k=3)
-        except Exception as e:
-            print(f"Knowledge base search error: {str(e)}")
-            knowledge_results = []
-            
-        # Format knowledge base results
-        knowledge_base_text = "\n\n".join([
-            f"Document: {result['metadata'].get('file_name', 'Unknown')}\n"
-            f"Content: {result['content']}\n"
-            f"Relevance: {result['score']:.2f}"
-            for result in knowledge_results
-        ]) if knowledge_results else "No relevant information found in knowledge base."
-        
-        # Invoke LLM pipeline
-        response_text = pipeline.invoke({
-            "history": history_formatted,
-            "user_input": user_input,
-            "knowledge_base": knowledge_base_text
-        })
-        
-        # Compute confidence score based on knowledge base results
-        if knowledge_results:
-            # Average the top 3 scores, weighted by position
-            weights = [0.6, 0.3, 0.1]
-            weighted_scores = [result["score"] * weight for result, weight in zip(knowledge_results, weights)]
-            confidence_score = min(100, sum(weighted_scores) / sum(weights[:len(knowledge_results)]) * 100)
+        if cached_response:
+            # Track cache hit for statistics
+            if redis_client:
+                redis_client.incr("cache_hit_count")
+                
+            logger.info(f"Cache hit for question: {user_input[:30]}...")
+            response_text = cached_response["answer"]
+            confidence_score = cached_response["confidence"]
+            escalate = cached_response["escalate"]
+            using_cache = True
         else:
-            # Lower confidence when no knowledge base results are found
-            confidence_score = 70
+            # Not in cache, find or create conversation
+            logger.info(f"Cache miss for question: {user_input[:30]}...")
+            
+            # Find or create conversation
+            active_conversation = db.query(Conversation).filter(
+                Conversation.user_id == user_id,
+                Conversation.end_time.is_(None)
+            ).order_by(desc(Conversation.start_time)).first()
+            
+            if not active_conversation:
+                # Create a new conversation
+                active_conversation = Conversation(user_id=user_id)
+                db.add(active_conversation)
+                db.commit()
+                db.refresh(active_conversation)
+            
+            # Retrieve conversation history
+            history_messages = db.query(Message).filter(
+                Message.conversation_id == active_conversation.id
+            ).order_by(Message.timestamp).all()
+            
+            # Format conversation history
+            history_formatted = "\n".join([
+                f"{'User' if msg.role == 'user' else 'AI'}: {msg.content}"
+                for msg in history_messages[-10:]  # Keep last 10 messages for context
+            ])
+            
+            # Query knowledge base for relevant information
+            try:
+                knowledge_results = kb.search(user_input, top_k=3)
+            except Exception as e:
+                logger.error(f"Knowledge base search error: {str(e)}")
+                knowledge_results = []
+                
+            # Format knowledge base results
+            knowledge_base_text = "\n\n".join([
+                f"Document: {result['metadata'].get('file_name', 'Unknown')}\n"
+                f"Content: {result['content']}\n"
+                f"Relevance: {result['score']:.2f}"
+                for result in knowledge_results
+            ]) if knowledge_results else "No relevant information found in knowledge base."
+            
+            # Invoke LLM pipeline
+            response_text = pipeline.invoke({
+                "history": history_formatted,
+                "user_input": user_input,
+                "knowledge_base": knowledge_base_text
+            })
+            
+            # Log the raw response from OpenAI
+            logger.info(f"Raw OpenAI response: {response_text}")
+            
+            # Compute confidence score based on knowledge base results
+            if knowledge_results:
+                # Average the top 3 scores, weighted by position
+                weights = [0.6, 0.3, 0.1]
+                weighted_scores = [result["score"] * weight for result, weight in zip(knowledge_results, weights)]
+                confidence_score = min(100, sum(weighted_scores) / sum(weights[:len(knowledge_results)]) * 100)
+            else:
+                # Lower confidence when no knowledge base results are found
+                confidence_score = 70
+            
+            # Determine if escalation is needed
+            escalate = confidence_score < 70
+            
+            # Cache high-confidence responses (≥70%)
+            if confidence_score >= 70:
+                cache_response(user_input, response_text, confidence_score, escalate)
         
-        # Determine if escalation is needed
-        escalate = confidence_score < 70
+        # Whether cached or not, we need to ensure there's an active conversation
+        if using_cache:
+            active_conversation = db.query(Conversation).filter(
+                Conversation.user_id == user_id,
+                Conversation.end_time.is_(None)
+            ).order_by(desc(Conversation.start_time)).first()
+            
+            if not active_conversation:
+                active_conversation = Conversation(user_id=user_id)
+                db.add(active_conversation)
+                db.commit()
+                db.refresh(active_conversation)
         
         # Save user message
         user_message = Message(
@@ -325,7 +424,7 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
             content=response_text,
             confidence_score=confidence_score,
             was_escalated=escalate,
-            used_kb=len(knowledge_results) > 0
+            used_kb=not using_cache and len(knowledge_results) > 0 if 'knowledge_results' in locals() else False
         )
         db.add(ai_message)
         
@@ -335,11 +434,12 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
             "answer": response_text,
             "confidence": confidence_score,
             "escalate": escalate,
-            "conversation_id": active_conversation.id
+            "conversation_id": active_conversation.id,
+            "from_cache": using_cache
         }
     except Exception as e:
         db.rollback()  # Rollback any pending transaction on error
-        print(f"Chat endpoint error: {str(e)}")
+        logger.error(f"Chat endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/escalate")
@@ -552,7 +652,56 @@ def get_analytics(
     # Reverse to get chronological order
     daily_usage.reverse()
     
-    return {
+    # Get Redis cache statistics (if Redis is available)
+    cache_statistics = None
+    if redis_client:
+        try:
+            # Find all cache keys and analyze statistics
+            all_keys = redis_client.keys("ai_response:*")
+            total_keys = len(all_keys)
+            
+            if total_keys > 0:
+                # Get hit count from Redis
+                hit_count = redis_client.get("cache_hit_count")
+                hit_count = int(hit_count) if hit_count else 0
+                
+                # Get request count from Redis
+                request_count = redis_client.get("cache_request_count") 
+                request_count = int(request_count) if request_count else user_messages
+                
+                # Calculate hit rate
+                hit_rate = (hit_count / request_count * 100) if request_count > 0 else 0
+                
+                # Get average confidence of cached responses
+                confidence_sum = 0
+                for key in all_keys[:100]:  # Limit to 100 keys for performance
+                    data = redis_client.get(key)
+                    if data:
+                        try:
+                            data_json = json.loads(data)
+                            confidence_sum += data_json.get("confidence", 0)
+                        except:
+                            pass
+                
+                avg_confidence = confidence_sum / min(len(all_keys), 100) if all_keys else 0
+                
+                # Estimate savings based on cache hits
+                # Assuming average of 500 input tokens and 750 output tokens per request
+                input_savings = (hit_count * 500 / 1000) * 0.0015
+                output_savings = (hit_count * 750 / 1000) * 0.0020
+                total_savings = input_savings + output_savings
+                
+                cache_statistics = {
+                    "total_requests": request_count,
+                    "hits": hit_count,
+                    "hit_rate": hit_rate,
+                    "avg_confidence": avg_confidence,
+                    "estimated_savings": round(float(total_savings), 4)
+                }
+        except Exception as e:
+            logger.error(f"Error calculating cache statistics: {str(e)}")
+    
+    response = {
         "total_conversations": int(total_conversations),
         "total_messages": int(total_messages),
         "avg_messages_per_conversation": round(float(avg_messages), 2),
@@ -563,6 +712,12 @@ def get_analytics(
         "estimated_output_cost": round(float(estimated_output_cost), 4),
         "estimated_total_cost": round(float(estimated_total_cost), 4)
     }
+    
+    # Add cache statistics if available
+    if cache_statistics:
+        response["cache_statistics"] = cache_statistics
+    
+    return response
 
 @app.get("/conversation/history")
 def get_conversation_history(current_user=Depends(get_current_user), db=Depends(get_db)):
