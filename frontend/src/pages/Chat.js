@@ -15,6 +15,27 @@ function Chat() {
 
   const API_BASE_URL = '';
 
+  // Emotion display settings
+  const emotionIcons = {
+    "angry": "😠",
+    "sad": "😢",
+    "anxious": "😰",
+    "confused": "😕",
+    "urgent": "⚡",
+    "positive": "😊",
+    "neutral": "😐"
+  };
+  
+  const emotionColors = {
+    "angry": "#ff4d4d",
+    "sad": "#6b93d6",
+    "anxious": "#e6b33c",
+    "confused": "#9966cc",
+    "urgent": "#ff9933",
+    "positive": "#66cc66",
+    "neutral": "#999999"
+  };
+
   useEffect(() => {
     // Check authentication on component mount
     const token = localStorage.getItem('token');
@@ -120,18 +141,19 @@ function Chat() {
       
       console.log("Chat response received:", response.data);
       
-      const { answer, confidence, escalate, conversation_id } = response.data;
+      const { answer, confidence, escalate, conversation_id, emotion } = response.data;
       
       if (!activeConversationId && conversation_id) {
         setActiveConversationId(conversation_id);
       }
       
-      // Add AI response to conversation
+      // Add AI response to conversation with emotion data
       const aiMessage = { 
         role: 'assistant', 
         content: answer,
         confidence,
-        escalate
+        escalate,
+        emotion: emotion || { category: 'neutral', confidence: 0 }
       };
       
       setConversation(prev => [...prev, aiMessage]);
@@ -308,6 +330,19 @@ function Chat() {
                   </div>
                 )}
                 
+                {msg.role === 'user' && msg.emotion && (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    marginBottom: '0.35rem',
+                    fontSize: '0.9rem',
+                    marginRight: '0.5rem',
+                    alignSelf: 'flex-end'
+                  }}>
+                    <span style={{ opacity: 0.7 }}>Detected mood: {emotionIcons[msg.emotion.category]} {msg.emotion.category}</span>
+                  </div>
+                )}
+                
                 <div 
                   style={{
                     backgroundColor: msg.role === 'user' ? 'var(--primary)' : 'white',
@@ -318,31 +353,54 @@ function Chat() {
                     boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
                     border: msg.role === 'assistant' ? '1px solid var(--gray-200)' : 'none',
                     position: 'relative',
-                    lineHeight: '1.5'
+                    lineHeight: '1.5',
+                    // 如果是AI回复且存在情感分析，根据用户情绪使用轻微的边框颜色
+                    borderLeft: msg.role === 'assistant' && msg.emotion ? 
+                      `4px solid ${emotionColors[msg.emotion.category] || 'var(--gray-200)'}` : undefined,
                   }}
                 >
                   {msg.content}
                   
-                  {msg.role === 'assistant' && msg.confidence !== undefined && (
+                  {msg.role === 'assistant' && (
                     <div style={{ 
                       fontSize: '0.8rem', 
                       marginTop: '0.5rem',
-                      color: msg.confidence < 70 ? 'var(--error)' : 'var(--success)',
                       display: 'flex',
-                      alignItems: 'center'
+                      flexDirection: 'column',
+                      gap: '0.25rem'
                     }}>
-                      <span 
-                        style={{ 
-                          width: '8px', 
-                          height: '8px', 
-                          borderRadius: '50%', 
-                          backgroundColor: msg.confidence < 70 ? 'var(--error)' : 'var(--success)',
-                          display: 'inline-block',
-                          marginRight: '0.5rem'
-                        }}
-                      />
-                      Confidence: {Math.round(msg.confidence)}%
-                      {msg.escalate && <span style={{ marginLeft: '0.5rem' }}>• Escalated to human support</span>}
+                      {/* 置信度显示 */}
+                      <div style={{
+                        color: msg.confidence < 70 ? 'var(--error)' : 'var(--success)',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}>
+                        <span 
+                          style={{ 
+                            width: '8px', 
+                            height: '8px', 
+                            borderRadius: '50%', 
+                            backgroundColor: msg.confidence < 70 ? 'var(--error)' : 'var(--success)',
+                            display: 'inline-block',
+                            marginRight: '0.5rem'
+                          }}
+                        />
+                        Confidence: {Math.round(msg.confidence)}%
+                        {msg.escalate && <span style={{ marginLeft: '0.5rem' }}>• Escalated to human support</span>}
+                      </div>
+                      
+                      {/* 情感响应显示 */}
+                      {msg.emotion && (
+                        <div style={{
+                          fontSize: '0.8rem',
+                          color: 'var(--gray-600)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          marginTop: '0.25rem'
+                        }}>
+                          <span style={{ marginRight: '0.5rem' }}>Responding to: {emotionIcons[msg.emotion.category]}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

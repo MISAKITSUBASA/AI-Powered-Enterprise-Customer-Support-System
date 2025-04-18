@@ -3,7 +3,7 @@ import jwt
 import bcrypt
 import redis
 import hashlib
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 from fastapi import FastAPI, Depends, HTTPException, status, File, UploadFile, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
@@ -198,10 +198,11 @@ KNOWLEDGE_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
 kb = KnowledgeBase(index_path=KNOWLEDGE_INDEX_PATH)
 
 prompt_template = PromptTemplate(
-    input_variables=["history", "user_input", "knowledge_base"],
+    input_variables=["history", "user_input", "knowledge_base", "emotion_style"],
     template=(
         "You are an AI customer support assistant. Be helpful, clear, and professional.\n"
         "If you're unsure about an answer, be honest and suggest escalating to human support.\n\n"
+        "The user's emotional tone appears to be: {emotion_style}. Adjust your response accordingly.\n\n"
         "Below is information from our knowledge base that might help answer the question:\n"
         "{knowledge_base}\n\n"
         "Conversation history:\n"
@@ -220,6 +221,103 @@ llm = OpenAI(
     model_name="gpt-3.5-turbo-instruct"
 )
 pipeline = prompt_template | llm
+
+# Emotion analysis constants
+EMOTION_CATEGORIES = {
+    "angry": {
+        "keywords": ["angry", "frustrated", "furious", "irritated", "upset", "annoyed"],
+        "response_style": "calm, understanding, and solution-oriented"
+    },
+    "sad": {
+        "keywords": ["sad", "disappointed", "unhappy", "heartbroken", "depressed", "down"],
+        "response_style": "empathetic, supportive, and reassuring"
+    },
+    "anxious": {
+        "keywords": ["anxious", "worried", "nervous", "stressed", "afraid", "concerned"],
+        "response_style": "reassuring, clear, and thorough"
+    },
+    "confused": {
+        "keywords": ["confused", "unsure", "uncertain", "puzzled", "lost", "unclear"],
+        "response_style": "clear, step-by-step, and patient"
+    },
+    "urgent": {
+        "keywords": ["urgent", "immediately", "asap", "emergency", "critical", "deadline"],
+        "response_style": "prompt, direct, and solution-focused"
+    },
+    "positive": {
+        "keywords": ["happy", "excited", "pleased", "grateful", "satisfied", "appreciate"],
+        "response_style": "friendly, enthusiastic, and approachable"
+    },
+    "neutral": {
+        "keywords": [],
+        "response_style": "professional, informative, and balanced"
+    }
+}
+
+def analyze_emotion(text: str) -> Tuple[str, float]:
+    """
+    Analyze the emotional tone of a text message.
+    Returns the detected emotion category and confidence score.
+    """
+    # Basic rule-based emotion analysis
+    text_lower = text.lower()
+    
+    # Default to neutral if we can't determine emotion
+    detected_emotion = "neutral"
+    max_score = 0.0
+    
+    # Simple keyword matching for emotion detection
+    for emotion, data in EMOTION_CATEGORIES.items():
+        if emotion == "neutral":
+            continue
+            
+        score = 0.0
+        for keyword in data["keywords"]:
+            if keyword in text_lower:
+                score += 1.0
+                
+        # Normalize score based on number of keywords
+        if data["keywords"]:
+            score = score / len(data["keywords"])
+            
+        if score > max_score:
+            max_score = score
+            detected_emotion = emotion
+    
+    # If we have access to OpenAI API, we can use it for more nuanced analysis
+    # This is a more advanced implementation
+    try:
+        if max_score < 0.3 and OPENAI_API_KEY:  # If basic detection isn't confident enough
+            prompt = f"""
+            Analyze the emotional tone of the following customer message:
+            
+            "{text}"
+            
+            Categorize the emotion as one of: angry, sad, anxious, confused, urgent, positive, or neutral.
+            Respond with only the emotion category and confidence score (0-1) separated by a comma.
+            For example: "angry,0.8" or "neutral,0.6"
+            """
+            
+            response = OpenAI(
+                openai_api_key=OPENAI_API_KEY,
+                temperature=0
+            ).invoke(prompt)
+            
+            try:
+                emotion, confidence = response.strip().split(",")
+                confidence = float(confidence)
+                if confidence > max_score and emotion in EMOTION_CATEGORIES:
+                    detected_emotion = emotion
+                    max_score = confidence
+            except:
+                # Fall back to rule-based result if parsing fails
+                logger.warning(f"Failed to parse OpenAI emotion analysis response: {response}")
+                pass
+    except Exception as e:
+        logger.warning(f"OpenAI emotion analysis failed: {str(e)}")
+        # Continue with rule-based result
+    
+    return detected_emotion, max_score
 
 @app.get("/")
 def root():
@@ -281,6 +379,9 @@ def login(user_data: UserLogin, db=Depends(get_db)):
 
 @app.post("/chat")
 def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depends(get_db)):
+    """
+    Multi-turn chat endpoint with knowledge base integration and emotion analysis
+    """
     try:
         user_id = current_user.id
         user_input = request.question.strip()
@@ -289,12 +390,15 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
         if not user_input:
             raise HTTPException(status_code=400, detail="Question cannot be empty")
 
+        # Track request count in Redis for statistics
         if redis_client:
             redis_client.incr("cache_request_count")
 
+        # Check Redis cache first for high-confidence responses
         cached_response = get_cached_response(user_input)
         
         if cached_response:
+            # Track cache hit for statistics
             if redis_client:
                 redis_client.incr("cache_hit_count")
                 
@@ -303,35 +407,45 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
             confidence_score = cached_response["confidence"]
             escalate = cached_response["escalate"]
             using_cache = True
+            # For cached responses, we don't have emotion information
+            detected_emotion = "neutral"
+            emotion_confidence = 0.0
         else:
+            # Not in cache, analyze emotion and generate response
             logger.info(f"Cache miss for question: {user_input[:30]}...")
             
+            # Find or create conversation
             active_conversation = db.query(Conversation).filter(
                 Conversation.user_id == user_id,
                 Conversation.end_time.is_(None)
             ).order_by(desc(Conversation.start_time)).first()
             
             if not active_conversation:
+                # Create a new conversation
                 active_conversation = Conversation(user_id=user_id)
                 db.add(active_conversation)
                 db.commit()
                 db.refresh(active_conversation)
             
+            # Retrieve conversation history
             history_messages = db.query(Message).filter(
                 Message.conversation_id == active_conversation.id
             ).order_by(Message.timestamp).all()
             
+            # Format conversation history
             history_formatted = "\n".join([
                 f"{'User' if msg.role == 'user' else 'AI'}: {msg.content}"
-                for msg in history_messages[-10:]
+                for msg in history_messages[-10:]  # Keep last 10 messages for context
             ])
             
+            # Query knowledge base for relevant information
             try:
                 knowledge_results = kb.search(user_input, top_k=3)
             except Exception as e:
                 logger.error(f"Knowledge base search error: {str(e)}")
                 knowledge_results = []
                 
+            # Format knowledge base results
             knowledge_base_text = "\n\n".join([
                 f"Document: {result['metadata'].get('file_name', 'Unknown')}\n"
                 f"Content: {result['content']}\n"
@@ -339,26 +453,41 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
                 for result in knowledge_results
             ]) if knowledge_results else "No relevant information found in knowledge base."
             
+            # Analyze user's emotional state
+            detected_emotion, emotion_confidence = analyze_emotion(user_input)
+            emotion_style = EMOTION_CATEGORIES[detected_emotion]["response_style"]
+            
+            # Log detected emotion
+            logger.info(f"Detected emotion: {detected_emotion} (confidence: {emotion_confidence:.2f})")
+            
+            # Invoke LLM pipeline with emotion context
             full_response = pipeline.invoke({
                 "history": history_formatted,
                 "user_input": user_input,
-                "knowledge_base": knowledge_base_text
+                "knowledge_base": knowledge_base_text,
+                "emotion_style": emotion_style
             })
             
+            # Log the raw response from OpenAI
             logger.info(f"Raw OpenAI response: {full_response}")
             
+            # Parse the response to extract confidence and answer
             response_text = ""
             ai_confidence = 0
             
             try:
+                # Extract confidence level from response
                 if "CONFIDENCE:" in full_response and "ANSWER:" in full_response:
                     confidence_line = full_response.split("CONFIDENCE:")[1].split("\n")[0].strip()
                     ai_confidence = float(confidence_line.split()[0])
                     
+                    # Extract answer (everything after ANSWER:)
                     answer_part = full_response.split("ANSWER:")[1].strip()
                     response_text = answer_part
                 else:
+                    # Fallback if format is not followed
                     response_text = full_response
+                    # Use knowledge base confidence as fallback
                     if knowledge_results:
                         weights = [0.6, 0.3, 0.1]
                         weighted_scores = [result["score"] * weight for result, weight in zip(knowledge_results, weights)]
@@ -372,13 +501,17 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
                 
             logger.info(f"Extracted confidence: {ai_confidence}, Answer length: {len(response_text)}")
             
+            # Use the AI's own confidence score instead of calculated confidence
             confidence_score = ai_confidence
             
+            # Determine if escalation is needed (confidence below threshold)
             escalate = confidence_score < 70
             
+            # Cache high-confidence responses (≥70%)
             if confidence_score >= 70:
                 cache_response(user_input, response_text, confidence_score, escalate)
         
+        # Whether cached or not, we need to ensure there's an active conversation
         if using_cache:
             active_conversation = db.query(Conversation).filter(
                 Conversation.user_id == user_id,
@@ -391,6 +524,7 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
                 db.commit()
                 db.refresh(active_conversation)
         
+        # Save user message
         user_message = Message(
             conversation_id=active_conversation.id,
             role="user",
@@ -398,6 +532,7 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
         )
         db.add(user_message)
         
+        # Save AI response
         ai_message = Message(
             conversation_id=active_conversation.id,
             role="assistant",
@@ -410,15 +545,20 @@ def chat(request: ChatRequest, current_user=Depends(get_current_user), db=Depend
         
         db.commit()
         
+        # Return emotion data to frontend
         return {
             "answer": response_text,
             "confidence": confidence_score,
             "escalate": escalate,
             "conversation_id": active_conversation.id,
-            "from_cache": using_cache
+            "from_cache": using_cache,
+            "emotion": {
+                "category": detected_emotion if 'detected_emotion' in locals() else "neutral",
+                "confidence": emotion_confidence if 'emotion_confidence' in locals() else 0.0
+            }
         }
     except Exception as e:
-        db.rollback()
+        db.rollback()  # Rollback any pending transaction on error
         logger.error(f"Chat endpoint error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
