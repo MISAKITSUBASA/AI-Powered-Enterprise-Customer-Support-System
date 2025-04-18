@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
 function Chat() {
+  // State management for chat functionality
   const [question, setQuestion] = useState('');
   const [conversation, setConversation] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -12,10 +13,10 @@ function Chat() {
   const chatContainerRef = useRef(null);
   const navigate = useNavigate();
 
-  // Define API base URL
-  const API_BASE_URL = ''; // Empty for relative paths with Nginx proxy
+  const API_BASE_URL = '';
 
   useEffect(() => {
+    // Check authentication on component mount
     const token = localStorage.getItem('token');
     if (!token) {
       alert('You must be logged in to access the chat.');
@@ -24,6 +25,7 @@ function Chat() {
     }
 
     try {
+      // Decode JWT to get user roles
       const base64Url = token.split('.')[1];
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
       const payload = JSON.parse(window.atob(base64));
@@ -36,6 +38,7 @@ function Chat() {
   }, [navigate]);
 
   const fetchConversationHistory = async () => {
+    // Load previous conversation if any exists
     setIsLoadingHistory(true);
     const token = localStorage.getItem('token');
     
@@ -80,12 +83,14 @@ function Chat() {
   };
 
   useEffect(() => {
+    // Auto-scroll to the latest message
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [conversation]);
 
   const handleSend = async () => {
+    // Process and send user message to backend
     if (!question.trim()) return;
     
     const token = localStorage.getItem('token');
@@ -97,6 +102,7 @@ function Chat() {
 
     setIsLoading(true);
 
+    // Optimistically add user message to conversation
     const userMessage = { role: 'user', content: question };
     setConversation(prev => [...prev, userMessage]);
     
@@ -120,6 +126,7 @@ function Chat() {
         setActiveConversationId(conversation_id);
       }
       
+      // Add AI response to conversation
       const aiMessage = { 
         role: 'assistant', 
         content: answer,
@@ -130,6 +137,7 @@ function Chat() {
       setConversation(prev => [...prev, aiMessage]);
       setQuestion('');
 
+      // Auto-escalate if confidence is low
       if (escalate) {
         handleEscalate();
       }
@@ -148,6 +156,7 @@ function Chat() {
   };
 
   const handleEscalate = async () => {
+    // Manual escalation to human support
     const token = localStorage.getItem('token');
     try {
       await axios.post(
@@ -166,6 +175,7 @@ function Chat() {
   };
 
   const handleKeyPress = (e) => {
+    // Send message on Enter key (not with Shift+Enter)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();

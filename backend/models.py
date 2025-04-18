@@ -3,13 +3,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import datetime
 
-# Export Base explicitly
 Base = declarative_base()
 __all__ = ['Base', 'User', 'Conversation', 'Message', 'Document']
 
 class User(Base):
-    # This class represents a user table in the database
-    # It stores information about system users (customers and admins)
+    """User model for authentication and user management"""
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
@@ -19,26 +17,26 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
-    # Relationships - links to other tables
+    # Relationships
     conversations = relationship("Conversation", back_populates="user")
     documents = relationship("Document", back_populates="uploader")
 
 class Conversation(Base):
-    # This class represents a conversation table in the database
-    # It stores information about customer support conversations
+    """Conversation model to track support sessions"""
     __tablename__ = "conversations"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))  # Links to User table
+    user_id = Column(Integer, ForeignKey("users.id"))
     start_time = Column(DateTime, default=datetime.datetime.utcnow)
     end_time = Column(DateTime, nullable=True)  # Null when conversation is active
-    channel = Column(String, default="web")  # Where the conversation happened (web, api, etc.)
+    channel = Column(String, default="web")  # Web, mobile, etc.
     
     # Relationships
     user = relationship("User", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")
 
 class Message(Base):
+    """Message model to store conversation messages"""
     __tablename__ = "messages"
     
     id = Column(Integer, primary_key=True, index=True)
@@ -48,23 +46,24 @@ class Message(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     
     # AI-specific fields
-    confidence_score = Column(Float, nullable=True)
-    was_escalated = Column(Boolean, default=False)
-    used_kb = Column(Boolean, default=False)  # Whether knowledge base was used
+    confidence_score = Column(Float, nullable=True)  # AI confidence in answer
+    was_escalated = Column(Boolean, default=False)  # Escalated to human support
+    used_kb = Column(Boolean, default=False)  # Used knowledge base for response
     
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
 
 class Document(Base):
+    """Document model for knowledge base management"""
     __tablename__ = "documents"
     
     id = Column(Integer, primary_key=True, index=True)
     file_name = Column(String)
-    file_type = Column(String)
+    file_type = Column(String)  # pdf, txt, docx, etc.
     file_size = Column(Integer)  # Size in bytes
     upload_time = Column(DateTime, default=datetime.datetime.utcnow)
     uploader_id = Column(Integer, ForeignKey("users.id"))
-    vector_index_id = Column(Integer, nullable=True)  # Reference to index in FAISS
+    vector_index_id = Column(Integer, nullable=True)  # Reference to FAISS index
     embedding_status = Column(String, default="pending")  # pending, completed, failed
 
     # Relationships
